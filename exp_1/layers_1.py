@@ -61,7 +61,7 @@ class FullyConnectedLayer(Layer):
         # 向量转置后进行点积运算，计算权重的梯度；对偏置的梯度进行求和
         weight_diff = np.dot(self.current_input.T, top_diff)    # 权值梯度
         bias_diff = np.sum(top_diff, axis=0, keepdims=True)     # 偏置梯度
-        bottom_diff = np.dot(self._weight.T, top_diff)          # 向前传递的梯度
+        bottom_diff = np.dot(top_diff, self._weight.T)          # 向前传递的梯度
 
         self._current_weight_diff = weight_diff
         self._current_bias_diff = bias_diff
@@ -89,6 +89,9 @@ class ReLULayer(Layer):
         self._current_input = None
         self._current_output = None
 
+        # backward
+        self._current_top_diff = None
+
     def forward(self, input_data):
         output = np.maximum(0, input_data)
 
@@ -102,29 +105,30 @@ class ReLULayer(Layer):
         return bottom_diff
 
 class SoftmaxLossLayer(Layer):
-    def __init__(self, batch_size=None):
+    def __init__(self):
         # forward
         self._current_input = None
         self._current_output = None
-        self._batch_size = batch_size
 
     def forward(self, input_data):
         input_exp = np.exp(input_data - np.max(input_data, axis=1, keepdims=True))
-        output = input_exp / np.sum(input_exp, axis=1, keepdims=True)
+        prob = input_exp / np.sum(input_exp, axis=1, keepdims=True)
 
         self._current_input = input_data
-        self._current_output = output
-        return output
+        self._current_output = prob
+        return prob
 
     def backward(self):
         # 计算softmax层的梯度，使用交叉熵损失函数的梯度公式
-        bottom_diff = (self._current_output - top_diff) / self._batch_size
-        return bottom_diff
+        return self._current_top_diff
 
     def get_loss(self, label):
+        batch_size = self._current_output.shape[0]
+
         # 计算交叉熵损失，使用softmax输出和标签之间的交叉熵损失公式
         label_one_hot = np.zeros_like(self._current_output)
         label_one_hot[np.arange(label.shape[0]), label] = 1.0
 
-        loss = -np.sum(label_one_hot * np.log(self._current_output)) / self._batch_size
+        self._current_top_diff = (self._current_output - label_one_hot) / batch_size
+        loss = -np.sum(label_one_hot * np.log(self._current_output)) / batch_size
         return loss

@@ -15,11 +15,17 @@ Notes:
 ------------------------------------------------------------
 """
 
+import argparse
+
 import struct
 import os
+import sys
+import time
 import numpy as np
 from layers_1 import *
 
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 class Dataset(object):
     def __init__(self, minst_dir, data_file, label_file):
@@ -32,8 +38,17 @@ class Dataset(object):
 
         self.data_with_label = np.append(_data, _label, axis=1)
 
+    @staticmethod
+    def load_data(minst_dir, data_file, label_file):
+        Dataset( minst_dir, data_file, label_file)
 
-    def load_mnist(self, file_dir, is_images=True):
+        _data = Dataset.load_mnist(os.path.join(minst_dir, data_file), is_images=True)
+        _label = Dataset.load_mnist(os.path.join(minst_dir, label_file), is_images=False)
+
+        return np.append(_data, _label, axis=1)
+
+    @staticmethod
+    def load_mnist(file_dir, is_images=True):
         # 加载MNIST数据集的代码
         bin_file = open(file_dir, 'rb')
         bin_data = bin_file.read()
@@ -76,15 +91,14 @@ class MNIST_MLP(object):
         self.layers = []
         self.update_layers = []
 
-        self._build_model()
 
     def load_train_data(self, minst_dir, data_file, label_file):
-        self._train_data = Dataset(minst_dir, data_file, label_file)
+        self._train_data = Dataset.load_data(minst_dir, data_file, label_file)
 
     def load_test_data(self, minst_dir, data_file, label_file):
-        self._test_data = Dataset(minst_dir, data_file, label_file)
+        self._test_data = Dataset.load_data(minst_dir, data_file, label_file)
 
-    def _build_model(self):
+    def build_model(self):
         # layers
         self.layers.append(fc1 := FullyConnectedLayer(self.input_size, self.hidden1))
         self.layers.append(relu1 := ReLULayer())
@@ -108,14 +122,22 @@ class MNIST_MLP(object):
             output = layer.forward(output)
         return output
 
-    def backward(self, label):
-        top_diff = label
-        for layer in reversed(self.layers):
-            top_diff = layer.backward(top_diff)
+    def backward(self):
+        top_diff = None
+
+        for i, layer in enumerate(reversed(self.layers)):
+            if i == 0:
+                top_diff = layer.backward()
+            else:
+                top_diff = layer.backward(top_diff)
 
     def update_param(self):
         for layer in self.update_layers:
             layer.update_param(self.lr)
+
+    def _shuffle_data(self):
+        print('Randomly shuffle MNIST data...')
+        np.random.shuffle(self._train_data)
 
     def save_model(self, param_dir):
         params = {}
@@ -130,35 +152,80 @@ class MNIST_MLP(object):
         self.layers[2].load_param(params['fc2_weight'], params['fc2_bias'])
         self.layers[4].load_param(params['fc3_weight'], params['fc3_bias'])
 
+    def get_loss(self, batch_labels):
+        return self.layers[-1].get_loss(batch_labels)
+
     def train(self):
         assert self._train_data is not None, "Please load training data before training."
 
         max_batch = self._train_data.shape[0] // self.batch_size
 
         for idx_epoch in range(self.max_epoch):
-            self._train_data.shuffle_data()
+            self._shuffle_data()
 
             for idx_batch in range(max_batch):
-                batch_images = self._train_data.data_with_label[idx_batch * self.batch_size : (idx_batch + 1) * self.batch_size, :-1]
-                batch_labels = self._train_data.data_with_label[idx_batch * self.batch_size : (idx_batch + 1) * self.batch_size, -1]
+                batch_images = self._train_data[idx_batch * self.batch_size : (idx_batch + 1) * self.batch_size, :-1]
+                batch_labels = self._train_data[idx_batch * self.batch_size : (idx_batch + 1) * self.batch_size, -1]
 
                 prob = self.forward(batch_images)
-                loss = self.layers[-1].get_loss(batch_labels)
+                loss = self.get_loss(batch_labels)
 
                 self.backward()
-                self.update_param()
-                self.backward(label)
                 self.update_param()
 
                 if (idx_batch + 1) % self.print_iter == 0:
                     print(f"Epoch [{idx_epoch + 1}/{self.max_epoch}], Batch [{idx_batch + 1}/{max_batch}]")
 
+    def evaluate(self):
+        pred_results = np.zeros([self._test_data.shape[0]])
+        for idx in range(int(self._test_data.shape[0]/self.batch_size)):
+            batch_images=self._test_data[idx*self.batch_size:(idx+1)*self.batch_size, :-1]
+            prob = self.forward(batch_images)
+            pred_labels=np.argmax(prob,axis=1)
+            pred_results[idx*self.batch_size:(idx+1)*self.batch_size]=pred_labels
+
+        accuracy = np.mean(pred_results==self._test_data[:,-1])
+        print('Accuracy in test set:%f' % accuracy)
+
+def build_mnist_mlp(param_dir='weight.npy', train=False):
+    h1,h2,e=32,16,10
+    mlp=MNIST_MLP(hidden1=h1,hidden2=h2,max_epoch=e)
+    mlp.load_train_data('../dataset/minist', 'train-images-idx3-ubyte', 'train-labels-idx1-ubyte')
+    mlp.load_test_data('../dataset/minist', 't10k-images-idx3-ubyte', 't10k-labels-idx1-ubyte')
+    mlp.build_model()
+    mlp.init_model()
+
+    if (train):
+        mlp.train()
+        mlp.save_model('mlp-%d-%d-%depoch.npy'%(h1,h2,e))
+    else:
+        mlp.load_model(param_dir)
+
+    return mlp
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Train/evaluate MNIST MLP')
+    parser.add_argument('--batch-size', type=int, default=64)
+    parser.add_argument('--hidden1', type=int, default=32)
+    parser.add_argument('--hidden2', type=int, default=16)
+    parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('--lr', type=float, default=0.01)
+    parser.add_argument('--param', type=str, default='mlp-32-16-10epoch.npy')
+    parser.add_argument('--data-dir', type=str, default='../dataset/minist')
+    parser.add_argument('--train', action='store_true', help='Train model if set, otherwise load and evaluate')
+    args = parser.parse_args()
 
-    train_data = Dataset('./minist', 'train-images-idx3-ubyte', 'train-labels-idx1-ubyte')
-    test_data = Dataset('./minist', 't10k-images-idx3-ubyte', 't10k-labels-idx1-ubyte')
+    mlp = MNIST_MLP(batch_size=args.batch_size, hidden1=args.hidden1, hidden2=args.hidden2, out_classes=10,
+                    lr=args.lr, max_epoch=args.epochs)
+    mlp.load_train_data('../dataset/minist', 'train-images-idx3-ubyte', 'train-labels-idx1-ubyte')
+    mlp.load_test_data('../dataset/minist', 't10k-images-idx3-ubyte', 't10k-labels-idx1-ubyte')
+    mlp.build_model()
+    mlp.init_model()
 
+    if args.train:
+        mlp.train()
+        mlp.save_model('mlp-%d-%d-%depoch.npy'%(args.hidden1,args.hidden2,args.epochs))
+    else:
+        mlp.load_model(args.param)
 
-
-    print(len(train_data.data_with_label))
+    mlp.evaluate()
