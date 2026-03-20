@@ -189,8 +189,8 @@ class MNIST_MLP(object):
         print('Accuracy in test set:%f' % accuracy)
 
 def build_mnist_mlp(param_dir='weight.npy', train=False):
-    h1,h2,e=160,64,16
-    mlp=MNIST_MLP(hidden1=h1,hidden2=h2,max_epoch=e)
+    h1,h2,e=64,63,16
+    mlp=MNIST_MLP(batch_size=10000, hidden1=h1, hidden2=h2, max_epoch=e)
     mlp.load_train_data('../mnist_data', 'train-images-idx3-ubyte', 'train-labels-idx1-ubyte')
     mlp.load_test_data('../mnist_data', 't10k-images-idx3-ubyte', 't10k-labels-idx1-ubyte')
     mlp.build_model()

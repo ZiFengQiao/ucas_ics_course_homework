@@ -1,134 +1,104 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-------------------------------------------------------------
-File Name     : layers_1.py  
-Author        : 王峤宇
-Created Date  : 3/16/26
-Version       : 1.0
-Description   : 
-------------------------------------------------------------
-Usage Example:
-    python your_script_name.py [options]
-Notes:
-    - 请在此处补充代码使用说明、输入输出格式等
-------------------------------------------------------------
-"""
+import sys
 import numpy as np
+import struct
+import os
+import time
 
-class Layer(object):
-    def forward(self, input_data):
-        raise NotImplementedError
 
-    def backward(self, top_diff):
-        raise NotImplementedError
+def show_matrix(mat, name):
+    # print(name + str(mat.shape) + ' mean %f, std %f' % (mat.mean(), mat.std()))
+    pass
 
-class FullyConnectedLayer(Layer):
+
+def show_time(time, name):
+    # print(name + str(time))
+    pass
+
+
+class FullyConnectedLayer(object):
     def __init__(self, num_input, num_output):
-        self._num_input = num_input
-        self._num_output = num_output
-
-        # param
-        self._weight = None
-        self._bias = None
-
-        # forward
-        self.current_input = None
-        self.current_output = None
-
-        # backward
-        self._current_weight_diff = None
-        self._current_bias_diff = None
-        self._current_param_need_update = False
+        self.num_input = num_input
+        self.num_output = num_output
+        print('\tFully connected layer with input %d, output %d.' % (self.num_input, self.num_output))
 
     def init_param(self, std=0.01):
-        # 初始化权重和偏置，权重使用正态分布随机初始化，偏置初始化为零
+        self.weight = np.random.normal(loc=0.0, scale=std, size=(self.num_input, self.num_output))
+        self.bias = np.zeros([1, self.num_output])
+        show_matrix(self.weight, 'fc weight ')
+        show_matrix(self.bias, 'fc bias ')
 
-        self._weight = np.random.normal(loc=0.0, scale=std, size=(self._num_input, self._num_output))
-        self._bias = np.zeros([1, self._num_output])
-
-    def forward(self, input_data):
-        # 点积运算，输入数据与权重矩阵相乘，并加上偏置项
-
-        output = np.dot(input_data, self._weight) + self._bias
-
-        self.current_input = input_data
-        self.current_output = output
-        return output
+    def forward(self, input):
+        start_time = time.time()
+        self.input = input
+        self.output = np.dot(input, self.weight) + self.bias
+        show_time(time.time() - start_time, 'fc forward time: ')
+        return self.output
 
     def backward(self, top_diff):
-        # 反向传播，计算权重和偏置的梯度
-        # 向量转置后进行点积运算，计算权重的梯度；对偏置的梯度进行求和
-        weight_diff = np.dot(self.current_input.T, top_diff)    # 权值梯度
-        bias_diff = np.sum(top_diff, axis=0, keepdims=True)     # 偏置梯度
-        bottom_diff = np.dot(top_diff, self._weight.T)          # 向前传递的梯度
-
-        self._current_weight_diff = weight_diff
-        self._current_bias_diff = bias_diff
-        self._current_param_need_update = True
+        self.d_weight = np.dot(self.input.T, top_diff)    # 权值梯度
+        self.d_bias = np.sum(top_diff, axis=0, keepdims=True)     # 偏置梯度
+        bottom_diff = np.dot(top_diff, self.weight.T)          # 向前传递的梯度
 
         return bottom_diff
 
-    def update_param(self, learning_rate):
-        # 更新权重和偏置，使用梯度下降法更新参数
-        assert self._current_param_need_update, "Please call backward() before update_param()."
+    def get_gradient(self):
+        return self.d_weight, self.d_bias
 
-        self._weight -= learning_rate * self._current_weight_diff
-        self._bias -= learning_rate * self._current_bias_diff
+    def update_param(self, lr):
+        self.weight = self.weight - lr * self.d_weight
+        self.bias = self.bias - lr * self.d_bias
 
     def load_param(self, weight, bias):
-        self._weight = weight
-        self._bias = bias
+        assert self.weight.shape == weight.shape
+        assert self.bias.shape == bias.shape
+        self.weight = weight
+        self.bias = bias
+        show_matrix(self.weight, 'fc weight ')
+        show_matrix(self.bias, 'fc bias ')
 
     def save_param(self):
-        return self._weight, self._bias
+        show_matrix(self.weight, 'fc weight ')
+        show_matrix(self.bias, 'fc bias ')
+        return self.weight, self.bias
 
-class ReLULayer(Layer):
+
+class ReLULayer(object):
     def __init__(self):
-        # forward
-        self._current_input = None
-        self._current_output = None
+        print('\t Relu layer')
 
-        # backward
-        self._current_top_diff = None
-
-    def forward(self, input_data):
-        output = np.maximum(0, input_data)
-
-        self._current_input = input_data
-        self._current_output = output
+    def forward(self, input):
+        start_time = time.time()
+        self.input = input
+        # TODO：ReLU层的前向传播，计算输出结果
+        output = np.maximum(0, input)
         return output
 
     def backward(self, top_diff):
-        # bottom_diff = top_diff * 1 (x > 0)
-        bottom_diff = np.where(self._current_input > 0, top_diff, 0)
+        bottom_diff = top_diff.copy()
+        bottom_diff[self.input < 0] = 0
         return bottom_diff
 
-class SoftmaxLossLayer(Layer):
-    def __init__(self):
-        # forward
-        self._current_input = None
-        self._current_output = None
 
-    def forward(self, input_data):
-        input_exp = np.exp(input_data - np.max(input_data, axis=1, keepdims=True))
-        prob = input_exp / np.sum(input_exp, axis=1, keepdims=True)
-
-        self._current_input = input_data
-        self._current_output = prob
-        return prob
-
-    def backward(self):
-        # 计算softmax层的梯度，使用交叉熵损失函数的梯度公式
-        return self._current_top_diff
+class SoftmaxLossLayer(object):
+    def forward(self, input):
+        input_max = np.max(input, axis=1, keepdims=True)
+        input_exp = np.exp(input - input_max)
+        exp_sum = np.sum(input_exp, axis=1, keepdims=True)
+        self.prob = input_exp / exp_sum
+        return self.prob
 
     def get_loss(self, label):
-        batch_size = self._current_output.shape[0]
-
-        # 计算交叉熵损失，使用softmax输出和标签之间的交叉熵损失公式
-        label_one_hot = np.zeros_like(self._current_output)
-        label_one_hot[np.arange(label.shape[0]), label] = 1.0
-
-        self._current_top_diff = (self._current_output - label_one_hot) / batch_size
-        loss = -np.sum(label_one_hot * np.log(self._current_output)) / batch_size
+        self.batch_size = self.prob.shape[0]
+        self.label_onehot = np.zeros_like(self.prob)
+        self.label_onehot[np.arange(self.batch_size), label] = 1.0
+        loss = -np.sum(np.log(self.prob) * self.label_onehot) / self.batch_size
         return loss
+
+    def backward(self):
+        bottom_diff = (self.prob - self.label_onehot) / self.batch_size
+        return bottom_diff
+
+
+
+
+

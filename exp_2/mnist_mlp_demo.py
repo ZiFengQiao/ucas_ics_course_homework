@@ -93,7 +93,7 @@ class MNIST_MLP(object):
         input_shape_softmax[2]=out_classes
         self.net.createSoftmaxLayer('softmax', input_shape_softmax, 1)
 
-    def load_mnist(self, file_dir, is_images = 'True'):
+    def load_mnist(self, file_dir, is_images = True):
         # Read binary data
         bin_file = open(file_dir, 'rb')
         bin_data = bin_file.read()
@@ -116,24 +116,24 @@ class MNIST_MLP(object):
     
     def load_data(self, data_path, label_path):
         print('Loading MNIST data from files...')
-        test_images = self.load_mnist(data_path, is_images='True')
-        test_labels = self.load_mnist(label_path, is_images='False')
+        test_images = self.load_mnist(data_path, is_images=True)
+        test_labels = self.load_mnist(label_path, is_images=False)
         self.test_data = np.append(test_images, test_labels, axis=1)
 
     def load_model(self, param_dir):
         print('Loading parameters from file ' + param_dir)
         
         params = np.load(param_dir,allow_pickle=True,encoding="latin1").item()
-        weigh1 = params['w1'].flatten().astype(np.float64)
-        bias1 = params['b1'].flatten().astype(np.float64)
+        weigh1 = params['fc1_weight'].flatten().astype(np.float64)
+        bias1 = params['fc1_bias'].flatten().astype(np.float64)
         self.net.loadParams(0, weigh1, bias1)
 
-        weigh2 = params['w2'].flatten().astype(np.float64)
-        bias2 = params['b2'].flatten().astype(np.float64)
+        weigh2 = params['fc2_weight'].flatten().astype(np.float64)
+        bias2 = params['fc2_bias'].flatten().astype(np.float64)
         self.net.loadParams(2, weigh2, bias2)
 
-        weigh3 = params['w3'].flatten().astype(np.float64)
-        bias3 = params['b3'].flatten().astype(np.float64)
+        weigh3 = params['fc3_weight'].flatten().astype(np.float64)
+        bias3 = params['fc3_bias'].flatten().astype(np.float64)
         self.net.loadParams(4, weigh3, bias3)
     
     def forward(self):
@@ -166,8 +166,8 @@ class MNIST_MLP(object):
         accuracy = np.mean(pred_results == self.test_data[:,-1])
         print('Accuracy in test set: %f' % accuracy)
 
-HIDDEN1 = 160
-HIDDEN2 = 64
+HIDDEN1 = 64
+HIDDEN2 = 63
 OUT = 10
 def run_mnist():
     batch_size = 10000
