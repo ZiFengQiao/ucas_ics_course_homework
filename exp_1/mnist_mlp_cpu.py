@@ -22,8 +22,9 @@ import os
 import sys
 import time
 import numpy as np
-from layers_1 import *
+from .layers_1 import FullyConnectedLayer, ReLULayer, SoftmaxLossLayer
 
+import matplotlib.pyplot as plt
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -71,7 +72,7 @@ class Dataset(object):
 
 
 class MNIST_MLP(object):
-    def __init__(self, batch_size=64,
+    def __init__(self, batch_size=100,
                  input_size=784, hidden1=32, hidden2=16, out_classes=10,
                  lr=0.01, max_epoch=2, print_iter=100):
         self.batch_size = batch_size
@@ -84,8 +85,8 @@ class MNIST_MLP(object):
         self.print_iter = print_iter
 
         # data
-        self._train_data = None
-        self._test_data = None
+        self.train_data = None
+        self.test_data = None
 
         # build_model
         self.layers = []
@@ -93,10 +94,10 @@ class MNIST_MLP(object):
 
 
     def load_train_data(self, minst_dir, data_file, label_file):
-        self._train_data = Dataset.load_data(minst_dir, data_file, label_file)
+        self.train_data = Dataset.load_data(minst_dir, data_file, label_file)
 
     def load_test_data(self, minst_dir, data_file, label_file):
-        self._test_data = Dataset.load_data(minst_dir, data_file, label_file)
+        self.test_data = Dataset.load_data(minst_dir, data_file, label_file)
 
     def build_model(self):
         # layers
@@ -137,7 +138,7 @@ class MNIST_MLP(object):
 
     def _shuffle_data(self):
         print('Randomly shuffle MNIST data...')
-        np.random.shuffle(self._train_data)
+        np.random.shuffle(self.train_data)
 
     def save_model(self, param_dir):
         params = {}
@@ -156,16 +157,16 @@ class MNIST_MLP(object):
         return self.layers[-1].get_loss(batch_labels)
 
     def train(self):
-        assert self._train_data is not None, "Please load training data before training."
+        assert self.train_data is not None, "Please load training data before training."
 
-        max_batch = self._train_data.shape[0] // self.batch_size
+        max_batch = self.train_data.shape[0] // self.batch_size
 
         for idx_epoch in range(self.max_epoch):
             self._shuffle_data()
 
             for idx_batch in range(max_batch):
-                batch_images = self._train_data[idx_batch * self.batch_size : (idx_batch + 1) * self.batch_size, :-1]
-                batch_labels = self._train_data[idx_batch * self.batch_size : (idx_batch + 1) * self.batch_size, -1]
+                batch_images = self.train_data[idx_batch * self.batch_size: (idx_batch + 1) * self.batch_size, :-1]
+                batch_labels = self.train_data[idx_batch * self.batch_size: (idx_batch + 1) * self.batch_size, -1]
 
                 prob = self.forward(batch_images)
                 loss = self.get_loss(batch_labels)
@@ -177,21 +178,21 @@ class MNIST_MLP(object):
                     print(f"Epoch [{idx_epoch + 1}/{self.max_epoch}], Batch [{idx_batch + 1}/{max_batch}]")
 
     def evaluate(self):
-        pred_results = np.zeros([self._test_data.shape[0]])
-        for idx in range(int(self._test_data.shape[0]/self.batch_size)):
-            batch_images=self._test_data[idx*self.batch_size:(idx+1)*self.batch_size, :-1]
+        pred_results = np.zeros([self.test_data.shape[0]])
+        for idx in range(int(self.test_data.shape[0] / self.batch_size)):
+            batch_images=self.test_data[idx * self.batch_size:(idx + 1) * self.batch_size, :-1]
             prob = self.forward(batch_images)
             pred_labels=np.argmax(prob,axis=1)
             pred_results[idx*self.batch_size:(idx+1)*self.batch_size]=pred_labels
 
-        accuracy = np.mean(pred_results==self._test_data[:,-1])
+        accuracy = np.mean(pred_results == self.test_data[:,-1])
         print('Accuracy in test set:%f' % accuracy)
 
-def build_mnist_mlp(param_dir='weight.npy', train=False):
-    h1,h2,e=32,16,10
+def build_mnist_mlp(param_dir='weight.npy', train=True):
+    h1,h2,e=160,64,16
     mlp=MNIST_MLP(hidden1=h1,hidden2=h2,max_epoch=e)
-    mlp.load_train_data('../dataset/minist', 'train-images-idx3-ubyte', 'train-labels-idx1-ubyte')
-    mlp.load_test_data('../dataset/minist', 't10k-images-idx3-ubyte', 't10k-labels-idx1-ubyte')
+    mlp.load_train_data('../mnist_data', 'train-images-idx3-ubyte', 'train-labels-idx1-ubyte')
+    mlp.load_test_data('../mnist_data', 't10k-images-idx3-ubyte', 't10k-labels-idx1-ubyte')
     mlp.build_model()
     mlp.init_model()
 
@@ -210,9 +211,9 @@ if __name__ == '__main__':
     parser.add_argument('--hidden2', type=int, default=16)
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--lr', type=float, default=0.01)
-    parser.add_argument('--param', type=str, default='mlp-32-16-10epoch.npy')
+    parser.add_argument('--param', type=str, default='weight.npy')
     parser.add_argument('--data-dir', type=str, default='../dataset/minist')
-    parser.add_argument('--train', action='store_true', help='Train model if set, otherwise load and evaluate')
+    parser.add_argument('--train', action='store_true', help='Train model if set, otherwise load and evaluate', default=True)
     args = parser.parse_args()
 
     mlp = MNIST_MLP(batch_size=args.batch_size, hidden1=args.hidden1, hidden2=args.hidden2, out_classes=10,
