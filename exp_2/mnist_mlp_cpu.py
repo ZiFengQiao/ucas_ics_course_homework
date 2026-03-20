@@ -24,7 +24,6 @@ import time
 import numpy as np
 from .layers_1 import FullyConnectedLayer, ReLULayer, SoftmaxLossLayer
 
-import matplotlib.pyplot as plt
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -73,12 +72,16 @@ class Dataset(object):
 
 class MNIST_MLP(object):
     def __init__(self, batch_size=100,
-                 input_size=784, hidden1=32, hidden2=16, out_classes=10,
+                 input_size=784, hidden_list=None, out_classes=10,
                  lr=0.01, max_epoch=2, print_iter=100):
+
+        if hidden_list is None:
+            hidden_list = [32, 16]
+
         self.batch_size = batch_size
         self.input_size = input_size
-        self.hidden1 = hidden1
-        self.hidden2 = hidden2
+        self.hidden_list = hidden_list
+
         self.out_classes = out_classes
         self.lr = lr
         self.max_epoch = max_epoch
@@ -101,17 +104,19 @@ class MNIST_MLP(object):
 
     def build_model(self):
         # layers
-        self.layers.append(fc1 := FullyConnectedLayer(self.input_size, self.hidden1))
-        self.layers.append(relu1 := ReLULayer())
-        self.layers.append(fc2 := FullyConnectedLayer(self.hidden1, self.hidden2))
-        self.layers.append(relu2 := ReLULayer())
-        self.layers.append(fc3 := FullyConnectedLayer(self.hidden2, self.out_classes))
-        self.layers.append(softmax_loss := SoftmaxLossLayer())
 
-        # update layers
-        self.update_layers.append(fc1)
-        self.update_layers.append(fc2)
-        self.update_layers.append(fc3)
+        last_hidden = self.input_size
+        for hidden in self.hidden_list:
+            self.layers.append(fc := FullyConnectedLayer(last_hidden, hidden))
+            self.layers.append(relu := ReLULayer())
+            self.update_layers.append(fc)
+
+            last_hidden = hidden
+
+        self.layers.append(last_fc := FullyConnectedLayer(last_hidden, self.out_classes))
+        self.layers.append(softmax_loss := SoftmaxLossLayer())
+        self.update_layers.append(last_fc)
+
 
     def init_model(self):
         for layer in self.update_layers:
@@ -142,16 +147,15 @@ class MNIST_MLP(object):
 
     def save_model(self, param_dir):
         params = {}
-        params['fc1_weight'], params['fc1_bias'] = self.layers[0].save_param()
-        params['fc2_weight'], params['fc2_bias'] = self.layers[2].save_param()
-        params['fc3_weight'], params['fc3_bias'] = self.layers[4].save_param()
+        for idx, layer in enumerate(self.update_layers):
+            params[f'fc{idx + 1}_weight'], params[f'fc{idx + 1}_bias'] = layer.save_param()
         np.save(param_dir, params)
 
     def load_model(self, param_dir):
         params = np.load(param_dir, allow_pickle=True).item()
-        self.layers[0].load_param(params['fc1_weight'], params['fc1_bias'])
-        self.layers[2].load_param(params['fc2_weight'], params['fc2_bias'])
-        self.layers[4].load_param(params['fc3_weight'], params['fc3_bias'])
+
+        for idx, layer in enumerate(self.update_layers):
+            layer.load_param(params[f'fc{idx + 1}_weight'], params[f'fc{idx + 1}_bias'])
 
     def get_loss(self, batch_labels):
         return self.layers[-1].get_loss(batch_labels)
@@ -189,44 +193,26 @@ class MNIST_MLP(object):
         print('Accuracy in test set:%f' % accuracy)
 
 def build_mnist_mlp(param_dir='weight.npy', train=False):
-    h1,h2,e=160,64,16
-    mlp=MNIST_MLP(hidden1=h1,hidden2=h2,max_epoch=e)
+    hidden_list = [256, 256, 256, 64, 16]
+    e = 16
+
+    mlp=MNIST_MLP(batch_size=32, hidden_list=hidden_list, max_epoch=e)
     mlp.load_train_data('../mnist_data', 'train-images-idx3-ubyte', 'train-labels-idx1-ubyte')
     mlp.load_test_data('../mnist_data', 't10k-images-idx3-ubyte', 't10k-labels-idx1-ubyte')
     mlp.build_model()
     mlp.init_model()
 
+    file_name = f"mlp-{"x".join(map(str, hidden_list))}.npy"
+
     if (train):
         mlp.train()
-        mlp.save_model('mlp-%d-%d-%depoch.npy'%(h1,h2,e))
+        mlp.save_model(file_name)
     else:
         mlp.load_model(param_dir)
 
     return mlp
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train/evaluate MNIST MLP')
-    parser.add_argument('--batch-size', type=int, default=64)
-    parser.add_argument('--hidden1', type=int, default=32)
-    parser.add_argument('--hidden2', type=int, default=16)
-    parser.add_argument('--epochs', type=int, default=10)
-    parser.add_argument('--lr', type=float, default=0.01)
-    parser.add_argument('--param', type=str, default='weight.npy')
-    parser.add_argument('--data-dir', type=str, default='../dataset/minist')
-    parser.add_argument('--train', action='store_true', help='Train model if set, otherwise load and evaluate', default=True)
-    args = parser.parse_args()
-
-    mlp = MNIST_MLP(batch_size=args.batch_size, hidden1=args.hidden1, hidden2=args.hidden2, out_classes=10,
-                    lr=args.lr, max_epoch=args.epochs)
-    mlp.load_train_data('../dataset/minist', 'train-images-idx3-ubyte', 'train-labels-idx1-ubyte')
-    mlp.load_test_data('../dataset/minist', 't10k-images-idx3-ubyte', 't10k-labels-idx1-ubyte')
-    mlp.build_model()
-    mlp.init_model()
-
-    if args.train:
-        mlp.train()
-        mlp.save_model('mlp-%d-%d-%depoch.npy'%(args.hidden1,args.hidden2,args.epochs))
-    else:
-        mlp.load_model(args.param)
+    mlp = build_mnist_mlp(train=True)
 
     mlp.evaluate()

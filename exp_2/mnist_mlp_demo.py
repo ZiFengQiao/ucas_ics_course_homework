@@ -13,8 +13,11 @@ class MNIST_MLP(object):
         self.filter_quant_params = []
     
     def build_model(self, batch_size=10000, input_size=784, 
-                    hidden1=32, hidden2=16, out_classes=10):
-    
+                    hidden_list=None, out_classes=10):
+
+        if hidden_list == None:
+            hidden_list = [256, 128]
+
         self.batch_size = batch_size
         self.out_classes = out_classes
         
@@ -23,68 +26,52 @@ class MNIST_MLP(object):
         self.net.setInputShape(batch_size, input_size, 1, 1) #设置输入参数
 
         # fc1
-        input_shapem1=pycnnl.IntVector(4)  
-        input_shapem1[0]=batch_size
-        input_shapem1[1]=1
-        input_shapem1[2]=1
-        input_shapem1[3]=input_size
-        weight_shapem1=pycnnl.IntVector(4)  
-        weight_shapem1[0]=batch_size
-        weight_shapem1[1]=1
-        weight_shapem1[2]=input_size
-        weight_shapem1[3]=hidden1
+        last_hidden = input_size
 
-        output_shapem1=pycnnl.IntVector(4)  
-        output_shapem1[0]=batch_size
-        output_shapem1[1]=1
-        output_shapem1[2]=1
-        output_shapem1[3]=hidden1
+        for idx, hidden in enumerate(hidden_list):
+            input_shapem     = pycnnl.IntVector(4)
+            input_shapem[0]  = batch_size
+            input_shapem[1]  = 1
+            input_shapem[2]  = 1
+            input_shapem[3]  = last_hidden
+
+            weight_shapem    = pycnnl.IntVector(4)
+            weight_shapem[0] = batch_size
+            weight_shapem[1] = 1
+            weight_shapem[2] = last_hidden
+            weight_shapem[3] = hidden
+
+            output_shapem    = pycnnl.IntVector(4)
+            output_shapem[0] = batch_size
+            output_shapem[1] = 1
+            output_shapem[2] = 1
+            output_shapem[3] = hidden
     
-        self.net.createMlpLayer('fc1', input_shapem1, weight_shapem1, output_shapem1)
-        
-        # relu1
-        self.net.createReLuLayer('relu1')
+            self.net.createMlpLayer(f'fc{idx}', input_shapem, weight_shapem, output_shapem)
 
-        # fc2
-        input_shapem2=pycnnl.IntVector(4)
-        input_shapem2[0]=batch_size
-        input_shapem2[1]=1
-        input_shapem2[2]=1
-        input_shapem2[3]=hidden1
+            self.net.createReLuLayer(f'relu{idx}')
 
-        weight_shapem2=pycnnl.IntVector(4)
-        weight_shapem2[0]=batch_size
-        weight_shapem2[1]=1
-        weight_shapem2[2]=hidden1
-        weight_shapem2[3]=hidden2
 
-        output_shapem2=pycnnl.IntVector(4)
-        output_shapem2[0]=batch_size
-        output_shapem2[1]=1
-        output_shapem2[2]=1
-        output_shapem2[3]=hidden2
-        self.net.createMlpLayer('fc2', input_shapem2, weight_shapem2, output_shapem2)
 
-        # relu2
-        self.net.createReLuLayer('relu2')
+        # last fc layer
+        input_shapem = pycnnl.IntVector(4)
+        input_shapem[0] = batch_size
+        input_shapem[1] = 1
+        input_shapem[2] = 1
+        input_shapem[3] = last_hidden
 
-        # fc3
-        input_shapem3=pycnnl.IntVector(4)
-        input_shapem3[0]=batch_size
-        input_shapem3[1]=1
-        input_shapem3[2]=1
-        input_shapem3[3]=hidden2
-        weight_shapem3=pycnnl.IntVector(4)
-        weight_shapem3[0]=batch_size
-        weight_shapem3[1]=1
-        weight_shapem3[2]=hidden2
-        weight_shapem3[3]=out_classes
-        output_shapem3=pycnnl.IntVector(4)
-        output_shapem3[0]=batch_size
-        output_shapem3[1]=1
-        output_shapem3[2]=1
-        output_shapem3[3]=out_classes
-        self.net.createMlpLayer('fc3', input_shapem3, weight_shapem3, output_shapem3)
+        weight_shapem = pycnnl.IntVector(4)
+        weight_shapem[0] = batch_size
+        weight_shapem[1] = 1
+        weight_shapem[2] = last_hidden
+        weight_shapem[3] = out_classes
+
+        output_shapem = pycnnl.IntVector(4)
+        output_shapem[0] = batch_size
+        output_shapem[1] = 1
+        output_shapem[2] = 1
+        output_shapem[3] = out_classes
+        self.net.createMlpLayer(f'fc{len(hidden_list)}', input_shapem, weight_shapem, output_shapem)
 
         # softmax
         input_shape_softmax=pycnnl.IntVector(3)
@@ -93,7 +80,7 @@ class MNIST_MLP(object):
         input_shape_softmax[2]=out_classes
         self.net.createSoftmaxLayer('softmax', input_shape_softmax, 1)
 
-    def load_mnist(self, file_dir, is_images = 'True'):
+    def load_mnist(self, file_dir, is_images = True):
         # Read binary data
         bin_file = open(file_dir, 'rb')
         bin_data = bin_file.read()
@@ -109,31 +96,35 @@ class MNIST_MLP(object):
             magic, num_images = struct.unpack_from(fmt_header, bin_data, 0)
             num_rows, num_cols = 1, 1
         data_size = num_images * num_rows * num_cols
-        mat_data = struct.unpack_from('>' + str(data_size) + 'B', bin_data, struct.calcsize(fmt_header))
+        try:
+            mat_data = struct.unpack_from('>' + str(data_size) + 'B', bin_data, struct.calcsize(fmt_header))
+        except:
+            print('Error in unpacking data from file %s'%file_dir)
+            raise
         mat_data = np.reshape(mat_data, [num_images, num_rows * num_cols])
         print('Load images from %s, number: %d, data shape: %s' % (file_dir, num_images, str(mat_data.shape)))
         return mat_data
     
     def load_data(self, data_path, label_path):
         print('Loading MNIST data from files...')
-        test_images = self.load_mnist(data_path, is_images='True')
-        test_labels = self.load_mnist(label_path, is_images='False')
+        test_images = self.load_mnist(data_path, is_images=True)
+        test_labels = self.load_mnist(label_path, is_images=False)
         self.test_data = np.append(test_images, test_labels, axis=1)
 
     def load_model(self, param_dir):
         print('Loading parameters from file ' + param_dir)
         
         params = np.load(param_dir,allow_pickle=True,encoding="latin1").item()
-        weigh1 = params['w1'].flatten().astype(np.float64)
-        bias1 = params['b1'].flatten().astype(np.float64)
+        weigh1 = params['fc1_weight'].flatten().astype(np.float64)
+        bias1 = params['fc1_bias'].flatten().astype(np.float64)
         self.net.loadParams(0, weigh1, bias1)
 
-        weigh2 = params['w2'].flatten().astype(np.float64)
-        bias2 = params['b2'].flatten().astype(np.float64)
+        weigh2 = params['fc2_weight'].flatten().astype(np.float64)
+        bias2 = params['fc2_bias'].flatten().astype(np.float64)
         self.net.loadParams(2, weigh2, bias2)
 
-        weigh3 = params['w3'].flatten().astype(np.float64)
-        bias3 = params['b3'].flatten().astype(np.float64)
+        weigh3 = params['fc3_weight'].flatten().astype(np.float64)
+        bias3 = params['fc3_bias'].flatten().astype(np.float64)
         self.net.loadParams(4, weigh3, bias3)
     
     def forward(self):
@@ -166,19 +157,20 @@ class MNIST_MLP(object):
         accuracy = np.mean(pred_results == self.test_data[:,-1])
         print('Accuracy in test set: %f' % accuracy)
 
-HIDDEN1 = 160
-HIDDEN2 = 64
 OUT = 10
 def run_mnist():
     batch_size = 10000
-    h1, h2, c = HIDDEN1, HIDDEN2, OUT
+    hidden_list = [256, 256, 256, 64, 16]
+
+    c = OUT
     mlp = MNIST_MLP()
-    mlp.build_model(batch_size=batch_size, hidden1=h1, hidden2=h2, out_classes=c)
+    mlp.build_model(batch_size=batch_size, hidden_list=hidden_list, out_classes=c)
     model_path = 'weight.npy'
     test_data = '../../mnist_data/t10k-images-idx3-ubyte'
     test_label = '../../mnist_data/t10k-labels-idx1-ubyte'
+
     mlp.load_data(test_data, test_label)
-    
+
     mlp.load_model(model_path)
 
     for i in range(10):
