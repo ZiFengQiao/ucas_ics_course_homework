@@ -22,8 +22,11 @@ import os
 import sys
 import time
 import numpy as np
-from .layers_1 import FullyConnectedLayer, ReLULayer, SoftmaxLossLayer
 
+if __name__ == '__main__':
+    from layers_1 import FullyConnectedLayer, ReLULayer, SoftmaxLossLayer
+else:
+    from .layers_1 import FullyConnectedLayer, ReLULayer, SoftmaxLossLayer
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -180,7 +183,7 @@ class MNIST_MLP(object):
 
                 if (idx_batch + 1) % self.print_iter == 0:
                     print(f"Epoch [{idx_epoch + 1}/{self.max_epoch}], Batch [{idx_batch + 1}/{max_batch}]")
-
+                    print(f"Loss: {loss:.4f}")
     def evaluate(self):
         pred_results = np.zeros([self.test_data.shape[0]])
         for idx in range(int(self.test_data.shape[0] / self.batch_size)):
@@ -192,17 +195,17 @@ class MNIST_MLP(object):
         accuracy = np.mean(pred_results == self.test_data[:,-1])
         print('Accuracy in test set:%f' % accuracy)
 
-def build_mnist_mlp(param_dir='weight.npy', train=False):
-    hidden_list = [256, 256, 256, 64, 16]
-    e = 16
+def build_mnist_mlp(param_dir='weight.npy', train=False, batch_size=10000):
+    hidden_list = [128, 64, 32]
+    e = 14
 
-    mlp=MNIST_MLP(batch_size=32, hidden_list=hidden_list, max_epoch=e)
+    mlp=MNIST_MLP(batch_size=batch_size, hidden_list=hidden_list, max_epoch=e)
     mlp.load_train_data('../mnist_data', 'train-images-idx3-ubyte', 'train-labels-idx1-ubyte')
     mlp.load_test_data('../mnist_data', 't10k-images-idx3-ubyte', 't10k-labels-idx1-ubyte')
     mlp.build_model()
     mlp.init_model()
 
-    file_name = f"mlp-{"x".join(map(str, hidden_list))}.npy"
+    file_name = f'mlp-{"x".join(map(str, hidden_list))}.npy'
 
     if (train):
         mlp.train()
@@ -213,6 +216,6 @@ def build_mnist_mlp(param_dir='weight.npy', train=False):
     return mlp
 
 if __name__ == '__main__':
-    mlp = build_mnist_mlp(train=True)
+    mlp = build_mnist_mlp(train=True, batch_size=32)
 
     mlp.evaluate()

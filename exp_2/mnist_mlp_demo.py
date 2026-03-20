@@ -13,15 +13,15 @@ class MNIST_MLP(object):
         self.filter_quant_params = []
     
     def build_model(self, batch_size=10000, input_size=784, 
-                    hidden_list=None, out_classes=10):
+                    hidden1=None, hidden2=None, hidden_list=None, out_classes=10):
 
         if hidden_list == None:
-            hidden_list = [256, 128]
+            hidden_list = [128, 64, 32]
 
         self.batch_size = batch_size
         self.out_classes = out_classes
         
-
+        self.hidden_list = hidden_list
         # creating layers
         self.net.setInputShape(batch_size, input_size, 1, 1) #设置输入参数
 
@@ -113,20 +113,14 @@ class MNIST_MLP(object):
 
     def load_model(self, param_dir):
         print('Loading parameters from file ' + param_dir)
-        
-        params = np.load(param_dir,allow_pickle=True,encoding="latin1").item()
-        weigh1 = params['fc1_weight'].flatten().astype(np.float64)
-        bias1 = params['fc1_bias'].flatten().astype(np.float64)
-        self.net.loadParams(0, weigh1, bias1)
+        params = np.load(param_dir, allow_pickle=True, encoding="latin1").item()
 
-        weigh2 = params['fc2_weight'].flatten().astype(np.float64)
-        bias2 = params['fc2_bias'].flatten().astype(np.float64)
-        self.net.loadParams(2, weigh2, bias2)
+        idx = 0
+        for idx in range(len(self.hidden_list) + 1):
+            weigh = params[f'fc{idx+1}_weight'].flatten().astype(np.float64)
+            bias = params[f'fc{idx+1}_bias'].flatten().astype(np.float64)
+            self.net.loadParams(2*idx, weigh, bias)
 
-        weigh3 = params['fc3_weight'].flatten().astype(np.float64)
-        bias3 = params['fc3_bias'].flatten().astype(np.float64)
-        self.net.loadParams(4, weigh3, bias3)
-    
     def forward(self):
         return self.net.forward()
 
@@ -157,10 +151,12 @@ class MNIST_MLP(object):
         accuracy = np.mean(pred_results == self.test_data[:,-1])
         print('Accuracy in test set: %f' % accuracy)
 
+HIDDEN1=128
+HIDDEN2=64
 OUT = 10
 def run_mnist():
     batch_size = 10000
-    hidden_list = [256, 256, 256, 64, 16]
+    hidden_list = [256, 256, 256, 64, 32]
 
     c = OUT
     mlp = MNIST_MLP()
