@@ -5,6 +5,7 @@ TEST_FILES = tb_inner_product.cpp tb_matrix_vector.cpp tb_matrix_mult.cpp
 # 源文件路径
 SRC_DIR = ../src
 OBJ_DIR = obj_dir
+SIM_DIR = $(CURDIR)
 
 # Verilator 配置
 VERILATOR = verilator
@@ -21,7 +22,7 @@ inner_product_4x16:
 	@echo "=== 编译内积运算器 ==="
 	$(VERILATOR) $(VERILATOR_FLAGS) --Mdir $(OBJ_DIR)/$@ \
 		$(SRC_DIR)/$@.v \
-		tb_inner_product.cpp \
+		$(SIM_DIR)/tb_inner_product.cpp \
 		--top-module $@ \
 		-CFLAGS "$(CXXFLAGS)"
 
@@ -33,7 +34,7 @@ matrix_vector_mult_4x4x16:
 	$(VERILATOR) $(VERILATOR_FLAGS) --Mdir $(OBJ_DIR)/$@ \
 		$(SRC_DIR)/$@.v \
 		$(SRC_DIR)/inner_product_4x16.v \
-		tb_matrix_vector.cpp \
+		$(SIM_DIR)/tb_matrix_vector.cpp \
 		--top-module $@ \
 		-CFLAGS "$(CXXFLAGS)"
 
@@ -46,7 +47,7 @@ matrix_mult_4x4x4x16:
 		$(SRC_DIR)/$@.v \
 		$(SRC_DIR)/matrix_vector_mult_4x4x16.v \
 		$(SRC_DIR)/inner_product_4x16.v \
-		tb_matrix_mult.cpp \
+		$(SIM_DIR)/tb_matrix_mult.cpp \
 		--top-module $@ \
 		-CFLAGS "$(CXXFLAGS)"
 
