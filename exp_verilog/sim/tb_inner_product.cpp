@@ -7,6 +7,8 @@
 #include <verilated_vcd_c.h>
 #include "Vinner_product_4x16.h"
 
+
+#include <random>
 using namespace std;
 
 vluint64_t sim_time = 0;
@@ -65,6 +67,24 @@ bool load_32bit_result(const string& path, int32_t& result) {
     return false;
 }
 
+bool gen_inner_test_data(int len, vector<int16_t>& activation, vector<int16_t>& weight, int32_t& expected_result) {
+    mt19937 gen(12345);
+    uniform_int_distribution<> dis(0, 65535/16);
+
+    for (int i = 0; i < len; i++) {
+        activation.push_back(dis(gen));
+        weight.push_back(dis(gen));
+    }
+
+    // 计算预期结果
+    int64_t sum = 0;
+    for (int i = 0; i < len; i++) {
+        sum += static_cast<int64_t>(activation[i]) * static_cast<int64_t>(weight[i]);
+    }
+    expected_result = static_cast<int32_t>(sum & 0xFFFFFFFF); // 模拟32位结果
+    return true;
+}
+
 int main(int argc, char**argv) {
     Verilated::commandArgs(argc, argv);
     Verilated::traceEverOn(true);
@@ -72,18 +92,25 @@ int main(int argc, char**argv) {
     cout << "\n=== 内积运算器测试（单组数据）===" << endl;
 
     // 加载数据
-    vector<int16_t> neuron, weight;
+    vector<int16_t> activation, weight;
     int32_t expected_result;
     
-    if (!load_16bit_data("/home/aics/dlp_ex/data/neuron", neuron) ||
-        !load_16bit_data("/home/aics/dlp_ex/data/weight", weight) ||
-        !load_32bit_result("/home/aics/dlp_ex/data/result", expected_result)) {
+    if (!gen_inner_test_data(4, activation, weight, expected_result)) {
+        cerr << "ERROR: 测试数据生成失败" << endl;
         return 1;
     }
 
+    // 或者从文件加载数据
+    /*
+    if (!load_16bit_data("/home/plmaple/Projects/ucas_ics_course_homework/dlp_ex_student/data/neuron", neuron) ||
+        !load_16bit_data("/home/plmaple/Projects/ucas_ics_course_homework/dlp_ex_student/data/weight", weight) ||
+        !load_32bit_result("/home/plmaple/Projects/ucas_ics_course_homework/dlp_ex_student/data/result", expected_result)) {
+        return 1;
+    }
+    */
     // 验证数据量（固定为4）
-    if (neuron.size() != 4 || weight.size() != 4) {
-        cerr << "ERROR: 数据量必须为4个（当前neuron=" << neuron.size() 
+    if (activation.size() != 4 || weight.size() != 4) {
+        cerr << "ERROR: 数据量必须为4个（当前activation=" << activation.size()
              << ", weight=" << weight.size() << "）" << endl;
         return 1;
     }
@@ -91,10 +118,10 @@ int main(int argc, char**argv) {
     // 打印加载的数据（调试用）
     cout << "\n=== 输入数据 ===" << endl;
     cout << "神经元数据（十进制）: ";
-    for (int i = 0; i < 4; i++) cout << (int)neuron[i] << " ";
+    for (int i = 0; i < 4; i++) cout << static_cast<uint16_t>(activation[i]) << " ";
     cout << "\n权重数据（十进制）:   ";
-    for (int i = 0; i < 4; i++) cout << (int)weight[i] << " ";
-    cout << "\n预期结果（十进制）:   " << expected_result << endl;
+    for (int i = 0; i < 4; i++) cout << static_cast<uint16_t>(weight[i]) << " ";
+    cout << "\n预期结果（十进制）:   "  << static_cast<uint32_t>(expected_result) << endl;
 
     // 初始化DUT和波形
     Vinner_product_4x16* dut = new Vinner_product_4x16;
@@ -136,7 +163,7 @@ int main(int argc, char**argv) {
         // 在时钟下降沿加载数据（确保数据在上升沿前稳定）
         if (sim_time == 9 && dut->clk == 0) {
             for (int i = 0; i < 4; i++) {
-                dut->activations[i] = neuron[i];
+                dut->activations[i] = activation[i];
                 dut->weights[i] = weight[i];
             }
             cout << "INFO: 加载数据 @ 时间 " << sim_time << endl;

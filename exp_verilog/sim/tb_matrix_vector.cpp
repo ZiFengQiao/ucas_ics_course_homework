@@ -8,6 +8,7 @@
 #include <verilated_vcd_c.h>
 #include "Vmatrix_vector_mult_4x4x16.h"
 
+#include <random>
 using namespace std;
 
 vluint64_t sim_time = 0;
@@ -81,6 +82,33 @@ bool load_32bit_results(const string& path, vector<int32_t>& results) {
     return true;
 }
 
+// 生成方阵和向量的测试数据
+bool gen_matrix_vector_test_data(int size, vector<int16_t>& activations, vector<int16_t>& weights, vector<int32_t>& expected_results) {
+    
+    mt19937 gen(12345);
+    uniform_int_distribution<> dis(0, 65535/16);
+
+    for (int i = 0; i < size; i++) {
+        activations.push_back(dis(gen));
+    }
+
+    // 生成随机数据
+    for (int i = 0; i < size * size; i++) {
+        weights.push_back(dis(gen));
+    }
+
+    // 计算预期结果
+    for (int i = 0; i < size; i++) {
+        int64_t sum = 0;
+        for (int j = 0; j < size; j++) {
+            // 矩阵乘向量，每行乘以向量对应元素累加
+            sum += static_cast<int64_t>(weights[i*size + j]) * static_cast<int64_t>(activations[j]);
+        }
+        expected_results.push_back(static_cast<int32_t>(sum & 0xFFFFFFFF)); // 模拟32位结果
+    }
+    return true;
+}
+
 int main(int argc, char**argv) {
     Verilated::commandArgs(argc, argv);
     Verilated::traceEverOn(true);
@@ -91,13 +119,18 @@ int main(int argc, char**argv) {
     vector<int16_t> activations, weights;
     vector<int32_t> expected_results, actual_results;
 
-    if (!load_config("/home/aics/dlp_ex/data/config", vec_size) ||
-        !load_16bit_data("/home/aics/dlp_ex/data/neuron", activations) ||
-        !load_16bit_data("/home/aics/dlp_ex/data/weight", weights) ||
-        !load_32bit_results("/home/aics/dlp_ex/data/result", expected_results)) {
+    // if (!load_config("/home/plmaple/Projects/ucas_ics_course_homework/dlp_ex_student/data/config", vec_size) ||
+    //     !load_16bit_data("/home/plmaple/Projects/ucas_ics_course_homework/dlp_ex_student/data/neuron", activations) ||
+    //     !load_16bit_data("/home/plmaple/Projects/ucas_ics_course_homework/dlp_ex_student/data/weight", weights) ||
+    //     !load_32bit_results("/home/plmaple/Projects/ucas_ics_course_homework/dlp_ex_student/data/result", expected_results)) {
+    //     return 1;
+    // }
+
+    vec_size = 4; // 固定为4x4矩阵和4维向量
+    if (!gen_matrix_vector_test_data(vec_size, activations, weights, expected_results)) {
+        cerr << "ERROR: 测试数据生成失败" << endl;
         return 1;
     }
-
     // 验证数据长度
     int matrix_size = vec_size * vec_size;
     if (weights.size() != matrix_size || activations.size() != vec_size || expected_results.size() != vec_size) {

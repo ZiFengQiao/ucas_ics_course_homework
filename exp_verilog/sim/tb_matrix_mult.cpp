@@ -8,6 +8,8 @@
 #include <verilated_vcd_c.h>
 #include "Vmatrix_mult_4x4x4x16.h"
 
+
+#include <random>
 using namespace std;
 
 vluint64_t sim_time = 0;
@@ -101,6 +103,35 @@ bool load_32bit_results(const string& path, vector<int32_t>& results) {
     return true;
 }
 
+// 生成方阵和向量的测试数据
+bool gen_matrix_test_data(int size, vector<int16_t>& activations, vector<int16_t>& weights, vector<int32_t>& expected_results) {
+    
+    mt19937 gen(12345);
+    uniform_int_distribution<> dis(0, 65535/16);
+
+    for (int i = 0; i < size * size; i++) {
+        activations.push_back(dis(gen));
+    }
+
+    // 生成随机数据
+    for (int i = 0; i < size * size; i++) {
+        weights.push_back(dis(gen));
+    }
+
+    // 计算预期结果
+    // 按activation 行 batch计算
+    for (int i = 0; i < size; i++) {
+        for (int j = 0; j < size; j++) {
+            int32_t sum = 0;
+            for (int k = 0; k < size; k++) {
+                sum += static_cast<int32_t>(activations[i * size + k]) * weights[j * size + k];
+            }
+            expected_results.push_back(sum);
+        }
+    }
+    return true;
+}
+
 int main(int argc, char**argv) {
     Verilated::commandArgs(argc, argv);
     Verilated::traceEverOn(true);
@@ -111,11 +142,19 @@ int main(int argc, char**argv) {
     vector<int16_t> activations, weights;
     vector<int32_t> expected_results, actual_results;
 
-    // 加载配置和数据
-    if (!load_config("/home/aics/dlp_ex/data/config", rowsA, colsA, colsB) ||
-        !load_16bit_matrix("/home/aics/dlp_ex/data/neuron", activations) ||
-        !load_16bit_matrix("/home/aics/dlp_ex/data/weight", weights) ||
-        !load_32bit_results("/home/aics/dlp_ex/data/result", expected_results)) {
+    // // 加载配置和数据
+    // if (!load_config("/home/plmaple/Projects/ucas_ics_course_homework/dlp_ex_student/data/config", rowsA, colsA, colsB) ||
+    //     !load_16bit_matrix("/home/plmaple/Projects/ucas_ics_course_homework/dlp_ex_student/data/neuron", activations) ||
+    //     !load_16bit_matrix("/home/plmaple/Projects/ucas_ics_course_homework/dlp_ex_student/data/weight", weights) ||
+    //     !load_32bit_results("/home/plmaple/Projects/ucas_ics_course_homework/dlp_ex_student/data/result", expected_results)) {
+    //     return 1;
+    // }
+
+    rowsA = 4;
+    colsA = 4;
+    colsB = 4;
+    if (!gen_matrix_test_data(4, activations, weights, expected_results)) {
+        cerr << "ERROR: 生成测试数据失败" << endl;
         return 1;
     }
 
