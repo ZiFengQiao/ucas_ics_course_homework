@@ -8,36 +8,36 @@ module matrix_vector_mult_4x4x16 (
 );
 
 inner_product_4x16 ipu0 (
-    .clk(clk),
-    .reset(reset),
-    .enable(enable),
-    ----------------------
-    ----------------------
-    ----------------------
+    .clk        (clk),
+    .reset      (reset),
+    .enable     (enable),
+    .activations(activations),
+    .weights    (weights[0]),
+    .result     (results[0])
 );
 inner_product_4x16 ipu1 (
-    .clk(clk),
-    .reset(reset),
-    .enable(enable),
-    ----------------------
-    ----------------------
-    ----------------------
+    .clk        (clk),
+    .reset      (reset),
+    .enable     (enable),
+    .activations(activations),
+    .weights    (weights[1]),
+    .result     (results[1])
 );
 inner_product_4x16 ipu2 (
-    .clk(clk),
-    .reset(reset),
-    .enable(enable),
-    ----------------------
-    ----------------------
-    ----------------------
+    .clk        (clk),
+    .reset      (reset),
+    .enable     (enable),
+    .activations(activations),
+    .weights    (weights[2]),
+    .result     (results[2])
 );
 inner_product_4x16 ipu3 (
-    .clk(clk),
-    .reset(reset),
-    .enable(enable),
-    ----------------------
-    ----------------------
-    ----------------------
+    .clk        (clk),
+    .reset      (reset),
+    .enable     (enable),
+    .activations(activations),
+    .weights    (weights[3]),
+    .result     (results[3])
 );
 
 endmodule
