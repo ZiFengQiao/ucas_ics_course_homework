@@ -27,15 +27,22 @@ float generateRandomFloat(float min, float max) {
 #endif
 }
 
+
+// 在bangc的矩阵乘法定义中，k是向量长度，m和n是左右向量的个数，这里不同
+//
+// param m : 左向量个数
+// param n : 
+// param k : 右向量个数
 __attribute__((noinline)) void multiplyMatricesCPU(float *left, float *right,
                                                    float *result, int m, int n,
                                                    int k) {
-  for (int i = 0; i < m; i++) {
-    for (int j = 0; j < k; j++) {
+  for (int i = 0; i < m; i++) {               // 遍历左向量
+    for (int j = 0; j < k; j++) {             // 遍历右向量
       result[i * k + j] = 0.0f;
-      for (int x = 0; x < n; x++) {
+      for (int x = 0; x < n; x++) {           // 遍历向量长度计算内积
         // TODO: 请补充标量矩阵乘计算部分代码
-        ________________________________________________________
+        // cpu实现的矩阵乘法
+        result[i * k + j] += left[i * n + x] * right[x * k + j];
       }
     }
   }
@@ -48,7 +55,7 @@ __mlu_global__ void multiplyMatricesMLU(float *left, float *right, float *result
       result[i * k + j] = 0.0f;
       for (int x = 0; x < n; x++) {
         // TODO: 请补充标量矩阵乘计算部分代码
-        ________________________________________________________
+        result[i * k + j] += left[i * n + x] * right[x * k + j];
       }
     }
   }
@@ -92,6 +99,7 @@ int main() {
   float cpu_time_used = (et_cpu.tv_sec - st_cpu.tv_sec) * 1e3 +
                         (et_cpu.tv_usec - st_cpu.tv_usec) / 1e3;
   printf("\nCPU Time taken: %.3f ms\n", cpu_time_used);
+
 #if DEBUG
   printf("\nCPU Result Matrix:\n");
   for (int i = 0; i < m; i++) {
@@ -105,21 +113,28 @@ int main() {
   cnrtNotifier_t st_mlu, et_mlu;
   CNRT_CHECK(cnrtNotifierCreate(&st_mlu));
   CNRT_CHECK(cnrtNotifierCreate(&et_mlu));
+
   cnrtQueue_t queue;
   CNRT_CHECK(cnrtQueueCreate(&queue));
+  
   cnrtDim3_t dim = {1, 1, 1};
   cnrtFunctionType_t func_type = CNRT_FUNC_TYPE_BLOCK;
-  // TODO: 请补充核函数开始计时代码
-  _____________________________________________
-  multiplyMatricesMLU<<<dim, func_type, queue>>>(left_mlu, right_mlu,
-                                                 result_mlu, m, n, k);
-  // TODO: 请补充核函数结束计时代码
-  _____________________________________________
+
+  // 主要函数，start、task、end依次入queue
+  CNRT_CHECK(cnrtPlaceNotifier(st_mlu, queue));   // TODO: 请补充核函数开始计时代码
+  multiplyMatricesMLU<<<dim, func_type, queue>>>(left_mlu, right_mlu, result_mlu, m, n, k);
+  CNRT_CHECK(cnrtPlaceNotifier(et_mlu, queue));   // TODO: 请补充核函数结束计时代码
+
   CNRT_CHECK(cnrtQueueSync(queue));
 
   float mlu_time_used = 0.0f;
   // TODO: 请补充核函数耗时统计代码
-  ____________________________________________________________________
+  // 更新查询对应Notifier的状态
+  CNRT_CHECK(cnrtQueryNotifier(st_mlu));
+  CNRT_CHECK(cnrtQueryNotifier(et_mlu));
+  CNRT_CHECK(cnrtWaitNotifier(st_mlu));
+  CNRT_CHECK(cnrtWaitNotifier(et_mlu));
+  CNRT_CHECK(cnrtNotifierElapsedTime(st_mlu, et_mlu, &mlu_time_used));
   printf("\nMLU Time taken: %.3f ms\n", mlu_time_used);
 
   float *result_actual = (float *)malloc(m * k * sizeof(float));
