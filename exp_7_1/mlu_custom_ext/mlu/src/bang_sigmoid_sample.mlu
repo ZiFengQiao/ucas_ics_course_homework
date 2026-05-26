@@ -3,6 +3,7 @@
 
 __nram__ char NRAM_BUFFER[MAX_NRAM_SIZE];
 
+// 核函数， __mlu_global__
 template<typename T>
 __mlu_global__ void bang_sigmoid_kernel(T *d_dst, T *d_src, int N) {
   const int NRAM_LIMIT_SIZE = FLOOR_ALIGN(MAX_NRAM_SIZE / 2, 64);
@@ -27,7 +28,9 @@ __mlu_global__ void bang_sigmoid_kernel(T *d_dst, T *d_src, int N) {
     __sync_io();
 
     // TODO: 请补充BANG的sigmoid函数
-    active_sigmoid_mlu(nram_out, nram_in, nram_limit);
+    // PLMAPLE: 查阅手册对应的bangc内建函数，https://www.cambricon.com/docs/sdk_1.15.0/cntoolkit_3.7.2/cambricon_bang_c_4.7.2/2Builtin-Functions/
+    //          void __bang_active_sigmoid(half *dst, const half *src, unsigned int elem_count)¶
+    __bang_active_sigmoid(nram_out, nram_in, nram_limit);
     __sync_compute();
 
     // TODO: 请补充拷贝方向
@@ -42,7 +45,7 @@ __mlu_global__ void bang_sigmoid_kernel(T *d_dst, T *d_src, int N) {
                    rem * sizeof(T), GDRAM2NRAM);
     __sync_io();
     // TODO: 请补充BANG的sigmoid函数
-    active_sigmoid_mlu(nram_out, nram_in, align_rem);
+    __bang_active_sigmoid(nram_out, nram_in, align_rem);
     __sync_compute();
     // TODO: 请补充拷贝方向
     __memcpy_async(d_output_per_task + i * nram_limit, nram_out,
@@ -52,22 +55,26 @@ __mlu_global__ void bang_sigmoid_kernel(T *d_dst, T *d_src, int N) {
   }
 }
 
+// cnrt是host与mlu交互接口，这个函数提供kernel调用接口
 template<typename T>
 void bang_sigmoid_kernel_entry(cnrtQueue *queue, T *d_dst, T *d_src,
                                int elem_count) {
   cnrtDim3_t dim = {1, 1, 1};
   int taskDims = dim.x * dim.y * dim.z;
   // TODO: 请补充Kernel函数类型
-  cnrtFunctionType_t c = CNRT_FUNC_TYPE_BLOCK;
+  cnrtFunctionType_t c = cnrtFuncTypeBlock;
   if (elem_count < taskDims) {
     dim.x = 1;
     dim.y = 1;
   }
+
   // TODO: 请补充Kernel函数的调用
-  cnrtInvokeKernel(queue, (void *)bang_sigmoid_kernel<T>, dim, d_dst, d_src, elem_count);
+  void *args[] = {&d_dst, &d_src, &elem_count};
+  cnrtInvokeKernel((void *)bang_sigmoid_kernel<T>, dim, cnrtFuncTypeBlock, args, 0, queue);
   cnrtQueueSync(queue);
 }
 
+// entry的进一步封装
 template<typename T>
 void bang_sigmoid_sample(T *h_dst, T *h_src, const int elem_count) {
 
@@ -87,8 +94,9 @@ void bang_sigmoid_sample(T *h_dst, T *h_src, const int elem_count) {
   cnrtQueueSync(queue);
 
   // TODO: 请补充Host和Device间的内存拷贝方向
+  // 计算结果，将nram拷贝回
   ret = cnrtMemcpy(h_dst, d_dst, elem_count * sizeof(T),
-                   NRAM2GDRAM);
+                   CNRT_MEM_TRANS_DIR_DEV2HOST);
 
   ret = cnrtQueueDestroy(queue);
 }
