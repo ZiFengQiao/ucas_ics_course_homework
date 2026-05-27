@@ -10,8 +10,9 @@
 #define LOOPS 8
 #define BLOCKS 32
 #define M_PER_LOOP 32
-#define M_PER_BLOCK (M_PER_LOOP * LOOPS)
-
+#define M_PER_BLOCK (M_PER_LOOP * LOOPS)  
+// 每一个block是256 x 512 x 512
+// block分为loop执行， 一个loop是32 x 512 x 512，8个loop是256 x 512 x 512
 #define M (M_PER_BLOCK * BLOCKS)
 #define N 512
 #define K 512
@@ -40,31 +41,45 @@ __attribute__((noinline)) void multiplyMatricesCPU(float *left, float *right,
       result[i * k + j] = 0.0f;
       for (int x = 0; x < n; x++) {
         // TODO: 请补充标量矩阵乘计算部分代码
-        ________________________________________________________
+        result[i * k + j] += left[i * n + x] * right[x * k + j];
       }
     }
   }
 }
 
+// 左矩阵的行block切分，相当于在做batch切分，所以矩阵乘法的结果不需要累加辐射，右矩阵不同，每一个block都需要将右矩阵完整加载计算
+// 32个taskDim, 相当于将工作batch分为32个
 __mlu_global__ void multiplyMatricesMLU(float *left, float *right, float *result,
                                         int m, int n, int k) {
+  int id = taskId;
   // TODO: 请补充左矩阵NRAM数组的声明
-  __nram__ float left_nram[______________];
+  __nram__ float left_nram[M_PER_LOOP * N];
   __wram__ float right_wram[N * K];
   // TODO: 请补充结果矩阵NRAM数组的声明
-  __nram__ float result_nram[______________];
+  __nram__ float result_nram[M_PER_BLOCK * K];
+
   int m_per_block = m / taskDim;
   int m_per_loop = m_per_block / LOOPS;
+
   // TODO: 请补充将右矩阵从GDRAM拷贝至WRAM的代码
-  _______________________________________________________________
+  // 右矩阵共用，反到weight ram
+  __memcpy(right_wram, right, n * k * sizeof(float), GDRAM2WRAM);
+  // 按照loop计算其实是在减少内存压力
   for (int loop = 0; loop < LOOPS; loop++) {
     // TODO: 请补充将左矩阵从GDRAM拷贝至NRAM的代码
-    __memcpy(left_nram, _______________________________________________,
-             ______________________________, GDRAM2NRAM);
+    __memcpy(
+      left_nram, 
+      left + (loop * m_per_loop + id * m_per_block) * n,
+      m_per_loop * n * sizeof(float),
+      GDRAM2NRAM
+    );
     __bang_matmul(result_nram, left_nram, right_wram, m_per_loop, n, k);
     // TODO: 请补充将结果矩阵从NRAM写回GDRAM的代码
-    __memcpy(_________________________________________________________,
-             result_nram, ______________________________, NRAM2GDRAM);
+    __memcpy(
+      result + (loop * m_per_loop + id * m_per_block) * k,
+      result_nram,
+      m_per_loop * k * sizeof(float),
+      NRAM2GDRAM);
   }
 }
 
@@ -122,19 +137,22 @@ int main() {
   cnrtQueue_t queue;
   CNRT_CHECK(cnrtQueueCreate(&queue));
   // TODO: 请补充核函数并行规模
-  cnrtDim3_t dim = {______, 1, 1};
+  cnrtDim3_t dim = {BLOCKS, 1, 1};
   cnrtFunctionType_t func_type = CNRT_FUNC_TYPE_BLOCK;
   // TODO: 请补充核函数开始计时代码
-  _____________________________________________
-  multiplyMatricesMLU<<<dim, func_type, queue>>>(left_mlu, right_mlu,
-                                                 result_mlu, m, n, k);
-  // TODO: 请补充核函数结束计时代码
-  _____________________________________________
+  CNRT_CHECK(cnrtPlaceNotifier(st_mlu, queue));   // TODO: 请补充核函数开始计时代码
+  multiplyMatricesMLU<<<dim, func_type, queue>>>(left_mlu, right_mlu, result_mlu, m, n, k);
+  CNRT_CHECK(cnrtPlaceNotifier(et_mlu, queue));   // TODO: 请补充核函数结束计时代码
+
   CNRT_CHECK(cnrtQueueSync(queue));
 
   float mlu_time_used = 0.0f;
   // TODO: 请补充核函数耗时统计代码
-  ____________________________________________________________________
+  CNRT_CHECK(cnrtQueryNotifier(st_mlu));
+  CNRT_CHECK(cnrtQueryNotifier(et_mlu));
+  CNRT_CHECK(cnrtWaitNotifier(st_mlu));
+  CNRT_CHECK(cnrtWaitNotifier(et_mlu));
+  CNRT_CHECK(cnrtNotifierElapsedTime(st_mlu, et_mlu, &mlu_time_used));
   printf("\nMLU Time taken: %.3f ms\n", mlu_time_used);
 
   float *result_actual = (float *)malloc(m * k * sizeof(float));
