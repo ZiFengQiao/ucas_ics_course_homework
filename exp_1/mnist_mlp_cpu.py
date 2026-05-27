@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 ------------------------------------------------------------
-File Name     : mnist_mlp_cpu.py  
+File Name     : mnist_mlp_cpu_backup.py
 Author        : 王峤宇
 Created Date  : 3/16/26
 Version       : 1.0
@@ -22,7 +22,7 @@ import os
 import sys
 import time
 import numpy as np
-from .layers_1 import FullyConnectedLayer, ReLULayer, SoftmaxLossLayer
+from layers_1 import FullyConnectedLayer, ReLULayer, SoftmaxLossLayer
 
 import matplotlib.pyplot as plt
 
@@ -189,7 +189,7 @@ class MNIST_MLP(object):
         print('Accuracy in test set:%f' % accuracy)
 
 def build_mnist_mlp(param_dir='weight.npy', train=True):
-    h1,h2,e=160,64,16
+    h1,h2,e=64,2048,16
     mlp=MNIST_MLP(hidden1=h1,hidden2=h2,max_epoch=e)
     mlp.load_train_data('../mnist_data', 'train-images-idx3-ubyte', 'train-labels-idx1-ubyte')
     mlp.load_test_data('../mnist_data', 't10k-images-idx3-ubyte', 't10k-labels-idx1-ubyte')
@@ -207,13 +207,13 @@ def build_mnist_mlp(param_dir='weight.npy', train=True):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train/evaluate MNIST MLP')
     parser.add_argument('--batch-size', type=int, default=64)
-    parser.add_argument('--hidden1', type=int, default=32)
-    parser.add_argument('--hidden2', type=int, default=16)
-    parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('--hidden1', type=int, default=256)
+    parser.add_argument('--hidden2', type=int, default=256)
+    parser.add_argument('--epochs', type=int, default=16)
     parser.add_argument('--lr', type=float, default=0.01)
-    parser.add_argument('--param', type=str, default='weight.npy')
+    parser.add_argument('--param', type=str, default='mlp-256-256-16epoch.npy')
     parser.add_argument('--data-dir', type=str, default='../dataset/minist')
-    parser.add_argument('--train', action='store_true', help='Train model if set, otherwise load and evaluate', default=True)
+    parser.add_argument('--train', action='store_true', help='Train model if set, otherwise load and evaluate', default=False)
     args = parser.parse_args()
 
     mlp = MNIST_MLP(batch_size=args.batch_size, hidden1=args.hidden1, hidden2=args.hidden2, out_classes=10,

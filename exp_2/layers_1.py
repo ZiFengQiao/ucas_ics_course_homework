@@ -69,7 +69,6 @@ class ReLULayer(object):
     def forward(self, input):
         start_time = time.time()
         self.input = input
-        # TODO：ReLU层的前向传播，计算输出结果
         output = np.maximum(0, input)
         return output
 
