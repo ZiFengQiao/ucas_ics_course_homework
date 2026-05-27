@@ -41,40 +41,51 @@ __attribute__((noinline)) void multiplyMatricesCPU(float *left, float *right,
       result[i * k + j] = 0.0f;
       for (int x = 0; x < n; x++) {
         // TODO: 请补充标量矩阵乘计算部分代码
-        ________________________________________________________
+        result[i * k + j] += left[i*n + x] * right[k*x + j];
       }
     }
   }
 }
 
+// 在原本blocks的基础上，引入计算和数据传输的重叠，构建三阶段流水线：
 __mlu_global__ void multiplyMatricesMLU(float *left, float *right, float *result,
                                         int m, int n, int k) {
+  int id = taskId;
   // TODO: 请补充左矩阵NRAM数组的声明
-  __nram__ float left_nram[_______________________];
+  // 给每个stage分配一块NRAM，避免不同stage之间的数据冲突
+  __nram__ float left_nram[STAGES*M_PER_LOOP * N];
   __wram__ float right_wram[N * K];
   // TODO: 请补充结果矩阵NRAM数组的声明
-  __nram__ float result_nram[_______________________];
+  __nram__ float result_nram[STAGES*M_PER_LOOP * K];
   int m_per_block = m / taskDim;
   int m_per_loop = m_per_block / LOOPS;
+
   // TODO: 请补充将右矩阵从GDRAM异步拷贝至WRAM的代码
-  _____________________________________________________________________
+  // 2 stages 就是ping pong buffer
+  // stage 1：global -> left nram
+  // stage 2: left nram -> compute -> result nram
+  // stage 3: result nram -> global
+  __memcpy_async(right_wram, right, n * k * sizeof(float), GDRAM2WRAM);
   for (int loop = 0; loop < (LOOPS + STAGES); loop++) {
     if (loop < LOOPS) {
       // TODO: 请补充将左矩阵从GDRAM异步拷贝至NRAM的代码
-      __memcpy_async(____________________________________________,
-                     _______________________________________________________,
+      __memcpy_async(left_nram + (loop % STAGES) * m_per_loop * n,      // 流水线buffer定位，输入数据ping-pong buffer
+                     left + (loop * m_per_loop + id * m_per_block) * n, // 原始数据 block定位
                      m_per_loop * n * sizeof(float), GDRAM2NRAM);
     }
     if (loop >= 1 && loop <= LOOPS) {
+      // 第一拍prefill 流水线，第二拍开始计算，最后的几拍用来flush流水线
       __bang_matmul(result_nram + m_per_loop * k * ((loop - 1) % STAGES),
                     left_nram + m_per_loop * n * ((loop - 1) % STAGES),
                     right_wram, m_per_loop, n, k);
     }
+    // 排空代码
+    // 所以loop是从loop - STAGES开始
     if (loop >= STAGES) {
       // TODO: 请补充将结果矩阵从NRAM写回GDRAM的代码
       __memcpy_async(
-          ____________________________________________________________________,
-          _________________________________________________________,
+          result + ((loop-STAGES) * m_per_loop + id * m_per_block) * k,       // 原始数据 block定位
+          result_nram + m_per_loop * k * ((loop - STAGES) % STAGES), // 流水线buffer定位，输出数据ping-pong buffer
           m_per_loop * k * sizeof(float), NRAM2GDRAM);
     }
     __sync();
@@ -135,19 +146,23 @@ int main() {
   cnrtQueue_t queue;
   CNRT_CHECK(cnrtQueueCreate(&queue));
   // TODO: 请补充核函数并行规模
-  cnrtDim3_t dim = {______, 1, 1};
+  cnrtDim3_t dim = {BLOCKS, 1, 1};
   cnrtFunctionType_t func_type = CNRT_FUNC_TYPE_BLOCK;
   // TODO: 请补充核函数开始计时代码
-  _____________________________________________
+  CNRT_CHECK(cnrtPlaceNotifier(st_mlu, queue));   // TODO: 请补充核函数开始计时代码
   multiplyMatricesMLU<<<dim, func_type, queue>>>(left_mlu, right_mlu,
                                                  result_mlu, m, n, k);
   // TODO: 请补充核函数结束计时代码
-  _____________________________________________
+  CNRT_CHECK(cnrtPlaceNotifier(et_mlu, queue));
   CNRT_CHECK(cnrtQueueSync(queue));
 
   float mlu_time_used = 0.0f;
   // TODO: 请补充核函数耗时统计代码
-  ____________________________________________________________________
+  CNRT_CHECK(cnrtQueryNotifier(st_mlu));
+  CNRT_CHECK(cnrtQueryNotifier(et_mlu));
+  CNRT_CHECK(cnrtWaitNotifier(st_mlu));
+  CNRT_CHECK(cnrtWaitNotifier(et_mlu));
+  CNRT_CHECK(cnrtNotifierElapsedTime(st_mlu, et_mlu, &mlu_time_used));
   printf("\nMLU Time taken: %.3f ms\n", mlu_time_used);
 
   float *result_actual = (float *)malloc(m * k * sizeof(float));
